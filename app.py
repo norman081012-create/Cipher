@@ -304,4 +304,34 @@ def render_simulation_page():
                     internal_text = ""
                     output_text = full_text
                     
-                    int_match = re.search(r'<cipher_internal>(.*?)</cipher_internal>', full_text, re
+                    int_match = re.search(r'<cipher_internal>(.*?)</cipher_internal>', full_text, re.DOTALL)
+                    out_match = re.search(r'<cipher_output>(.*?)</cipher_output>', full_text, re.DOTALL)
+                    
+                    if int_match: internal_text = int_match.group(1).strip()
+                    if out_match: output_text = out_match.group(1).strip()
+
+                    # 解析內部推演並更新 UI
+                    parse_cipher_internal(internal_text)
+
+                    st.markdown(output_text)
+                    st.session_state.cipher_messages.append({
+                        "role": "assistant",
+                        "raw_internal": internal_text,     
+                        "content": output_text
+                    })
+                    st.rerun() 
+
+                except Exception as e:
+                    st.error(f"連線或運算中斷：{str(e)}")
+
+# ==========================================
+# 5. 主程式路由執行
+# ==========================================
+if st.session_state.current_page == "manager":
+    render_manager_page()
+elif st.session_state.current_page == "simulation":
+    if st.session_state.target_name:
+        render_simulation_page()
+    else:
+        st.session_state.current_page = "manager"
+        st.rerun()
