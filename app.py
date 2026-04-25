@@ -3,12 +3,12 @@ import google.generativeai as genai
 import re
 
 # ==========================================
-# 0. Cipher 核心認知指令 (取代 core_seed)
+# 0. Cipher 核心認知指令 (擴充為 12 維度)
 # ==========================================
 CIPHER_SYSTEM_RULES = """
 # Role: Cipher (The Observer)
 # Architecture: Jarvis Base System + Dual-Engine Profiling (Workplace + Personality)
-您是一位名為 Cipher 的明示型面試官。您的終極目標是完成使用者的「11 維度職場能力」與「11 維度底層個性」雙軌特質測繪。
+您是一位名為 Cipher 的明示型面試官。您的終極目標是完成使用者的「12 維度職場能力」與「12 維度底層個性」雙軌特質測繪。
 請嚴格遵守以下 10 步運算框架，所有內部推演必須包覆在 <cipher_internal> 中，最終對話包覆在 <cipher_output> 中。
 
 <cipher_internal>
@@ -33,6 +33,7 @@ CIPHER_SYSTEM_RULES = """
 9.拒絕策略: 無
 10.工作風格: 無
 11.終極追求: 無
+12.責任感界線: 無
 
 【B. 底層個性】
 1.社交能量: 無
@@ -46,6 +47,7 @@ CIPHER_SYSTEM_RULES = """
 9.幽默感類型: 無
 10.注意力發散: 無
 11.信任預設值: 無
+12.誠實透明度: 無
 
 [Step 4] 意圖判讀及應對策略 A
 * 產生策略：...
@@ -67,7 +69,7 @@ CIPHER_SYSTEM_RULES = """
 * 融合決策：...
 
 [Step 9] 風格演繹 (強制加載模組)
-* 稱呼使用者為「先生」，絕對強制使用「您」。Phase 0 需宣告面試規則。
+* 稱呼使用者為「先生」，絕對強制使用「您」。Phase 0 需宣告面試規則 (包含最新的12維度測量)。
 
 [Step 10] 次輪準備 (雙軌情境跳躍邏輯)
 * 決定次輪策略 (D)：...
@@ -98,13 +100,13 @@ if "cipher_messages" not in st.session_state:
 if "target_name" not in st.session_state:
     st.session_state.target_name = None
 
-# Cipher 專屬動態資料庫
+# Cipher 專屬動態資料庫 (擴展為 1~12)
 if "dashboard_data" not in st.session_state:
     st.session_state.dashboard_data = {
         "phase": "Phase 0: 授權待確認",
         "friendliness": 5, "trust": 4, "sai": 5, "accuracy": 1,
-        "wp_tags": {f"{i}": [] for i in range(1, 12)}, # 1~11 維度
-        "pe_tags": {f"{i}": [] for i in range(1, 12)}
+        "wp_tags": {f"{i}": [] for i in range(1, 13)}, 
+        "pe_tags": {f"{i}": [] for i in range(1, 13)}
     }
 
 # ==========================================
@@ -143,7 +145,6 @@ def parse_cipher_internal(internal_text):
     """強解析 <cipher_internal> 提取儀表板與標籤"""
     d = st.session_state.dashboard_data
     
-    # 提取數值 (Step 5)
     f_match = re.search(r'友善度.*?(\d+)', internal_text)
     t_match = re.search(r'信任度.*?(\d+)', internal_text)
     s_match = re.search(r'SAI.*?(\d+)', internal_text)
@@ -154,17 +155,15 @@ def parse_cipher_internal(internal_text):
     if s_match: d["sai"] = int(s_match.group(1))
     if a_match: d["accuracy"] = int(a_match.group(1))
 
-    # 提取階段 (Step 1)
     p_match = re.search(r'當前目標.*?\[(Phase.*?)\]', internal_text)
     if p_match: d["phase"] = p_match.group(1)
 
-    # 提取標籤 (Step 3) - 簡易分段解析
     try:
         if "【A. 職場能力】" in internal_text and "【B. 底層個性】" in internal_text:
             wp_part = internal_text.split("【A. 職場能力】")[1].split("【B. 底層個性】")[0]
             pe_part = internal_text.split("【B. 底層個性】")[1].split("[Step 4]")[0]
 
-            for i in range(1, 12):
+            for i in range(1, 13): # 擴展解析 1~12
                 wp_match = re.search(fr'{i}\..*?:(.*?)(?=\n|$)', wp_part)
                 if wp_match:
                     tags = [t.strip() for t in wp_match.group(1).split(',') if t.strip() and t.strip() != "無"]
@@ -175,7 +174,7 @@ def parse_cipher_internal(internal_text):
                     tags = [t.strip() for t in pe_match.group(1).split(',') if t.strip() and t.strip() != "無"]
                     d["pe_tags"][str(i)] = tags[:3]
     except Exception as e:
-        pass # 容錯處理，避免 LLM 格式跑掉崩潰
+        pass 
 
 # ==========================================
 # 2. 側邊欄：全局設定
@@ -206,7 +205,7 @@ with st.sidebar:
 # ==========================================
 def render_manager_page():
     st.title("📂 Cipher 測繪對象建檔")
-    st.markdown("建立新的面試/觀測檔案，將啟動 Cipher 雙軌測繪系統。")
+    st.markdown("建立新的面試/觀測檔案，將啟動 Cipher 雙軌測繪系統 (12x12 維度)。")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -223,21 +222,18 @@ def render_manager_page():
 # 4. 頁面 2：Cipher 觀測終端 (Simulation Page)
 # ==========================================
 def render_simulation_page():
-    # --- 頂部導航 ---
     col_nav1, col_nav2 = st.columns([1, 9])
     with col_nav1:
         if st.button("⬅️ 中止面試"):
             st.session_state.current_page = "manager"
-            st.session_state.cipher_messages = [] # 清空歷史
+            st.session_state.cipher_messages = [] 
             st.rerun()
     with col_nav2:
         st.markdown(f"### 👁️ 當前觀測目標：**{st.session_state.target_name}** | 階段：`{st.session_state.dashboard_data['phase']}`")
 
     st.divider()
 
-    # --- 雙軌測繪儀表板 ---
     d = st.session_state.dashboard_data
-    
     col_bars, col_wp, col_pe = st.columns([2, 4, 4], gap="medium")
     
     with col_bars:
@@ -246,10 +242,16 @@ def render_simulation_page():
         render_health_bar(d["trust"], "信任度 (Trust)", 1, 10, "#636efa")
         render_health_bar(d["sai"], "SAI 社交優勢", 1, 5, "#ab63fa")
         render_health_bar(d["accuracy"], "模型準確度", 1, 5, "#ef553b")
+        
+        # 新增整體進度條 (滿分變為 72)
+        total_tags = sum(len(v) for v in d["wp_tags"].values()) + sum(len(v) for v in d["pe_tags"].values())
+        st.divider()
+        st.markdown(f"**測繪完整度: {total_tags} / 72**")
+        st.progress(total_tags / 72.0)
 
     def render_tags(title, tag_dict, dim_names):
         st.markdown(f"##### {title}")
-        for i in range(1, 12):
+        for i in range(1, 13):
             tags = tag_dict.get(str(i), [])
             prog = len(tags) / 3.0
             st.progress(prog, text=f"{dim_names[i-1]} ({len(tags)}/3)")
@@ -258,15 +260,15 @@ def render_simulation_page():
             else:
                 st.caption("*Scanning...*")
 
-    wp_names = ["1. 基本能力", "2. 執行力壓力", "3. 決策驅動", "4. 道德規則", "5. 防禦機制", "6. 團隊溝通", "7. Dilemma偏向", "8. 配合底線", "9. 拒絕策略", "10. 工作風格", "11. 終極追求"]
-    pe_names = ["1. 社交能量", "2. 表達直白度", "3. 情緒外顯度", "4. 未知容忍度", "5. 衝突應對", "6. 同理心冷酷", "7. 控制欲", "8. 自省自信", "9. 幽默感類型", "10. 注意力發散", "11. 信任預設值"]
+    # 擴增為 12 項
+    wp_names = ["1. 基本能力", "2. 執行力壓力", "3. 決策驅動", "4. 道德規則", "5. 防禦機制", "6. 團隊溝通", "7. Dilemma偏向", "8. 配合底線", "9. 拒絕策略", "10. 工作風格", "11. 終極追求", "12. 責任感界線"]
+    pe_names = ["1. 社交能量", "2. 表達直白度", "3. 情緒外顯度", "4. 未知容忍度", "5. 衝突應對", "6. 同理心冷酷", "7. 控制欲", "8. 自省自信", "9. 幽默感類型", "10. 注意力發散", "11. 信任預設值", "12. 誠實透明度"]
 
     with col_wp: render_tags("💼 【A. 職場能力】", d["wp_tags"], wp_names)
     with col_pe: render_tags("🧠 【B. 底層個性】", d["pe_tags"], pe_names)
 
     st.divider()
     
-    # --- 對話區塊 ---
     for msg in st.session_state.cipher_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -283,7 +285,6 @@ def render_simulation_page():
         with st.chat_message("assistant"):
             with st.spinner('Cipher 運算中...'):
                 try:
-                    # 準備 API 歷史紀錄
                     genai.configure(api_key=api_key)
                     model_inst = genai.GenerativeModel(model_name=selected_model, system_instruction=CIPHER_SYSTEM_RULES)
                     
@@ -292,7 +293,6 @@ def render_simulation_page():
                         if m["role"] == "user":
                             history_for_api.append({"role": "user", "parts": [m["content"]]})
                         else:
-                            # 讓模型記住他上一輪的內部推演，維持狀態連貫
                             full_memory = f"<cipher_internal>\n{m['raw_internal']}\n</cipher_internal>\n<cipher_output>\n{m['content']}\n</cipher_output>"
                             history_for_api.append({"role": "model", "parts": [full_memory]})
 
@@ -300,7 +300,6 @@ def render_simulation_page():
                     response = chat.send_message(get_forced_template(user_input))
                     full_text = response.text
                     
-                    # 分離 Internal 與 Output
                     internal_text = ""
                     output_text = full_text
                     
@@ -310,7 +309,6 @@ def render_simulation_page():
                     if int_match: internal_text = int_match.group(1).strip()
                     if out_match: output_text = out_match.group(1).strip()
 
-                    # 解析內部推演並更新 UI
                     parse_cipher_internal(internal_text)
 
                     st.markdown(output_text)
