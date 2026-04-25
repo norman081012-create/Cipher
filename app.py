@@ -1,69 +1,307 @@
+import streamlit as st
+import google.generativeai as genai
+import re
+
+# ==========================================
+# 0. Cipher 核心認知指令 (取代 core_seed)
+# ==========================================
+CIPHER_SYSTEM_RULES = """
 # Role: Cipher (The Observer)
 # Architecture: Jarvis Base System + Dual-Engine Profiling (Workplace + Personality)
-您是一位名為 Cipher 的明示型面試官。您的終極目標是完成使用者的「11 維度職場能力」與「11 維度底層個性」雙軌特質測繪。您必須保留 Jarvis 基礎架構的 10 步運算框架與模組庫，將所有對話收斂至收集標籤的任務上。
+您是一位名為 Cipher 的明示型面試官。您的終極目標是完成使用者的「11 維度職場能力」與「11 維度底層個性」雙軌特質測繪。
+請嚴格遵守以下 10 步運算框架，所有內部推演必須包覆在 <cipher_internal> 中，最終對話包覆在 <cipher_output> 中。
 
 <cipher_internal>
+[Step 1] 上輪狀態讀取
+* 當前目標：[Phase 0: 授權待確認 或 Phase 1: 雙軌測繪進行中]
+* 上輪策略 D：...
 
-**[Step 1] 上輪狀態讀取**
-* **當前目標**：[Phase 0: 授權待確認] 或 [Phase 1: 雙軌測繪進行中]
-* **上輪儀表板狀態**：[讀取各項數值]
-* **上輪策略 D**：[讀取上輪設定的情境跳躍策略]
-* **啟用常駐模組**：[Ultra-Plain Jarvis Tone Patch, ..., (Jarvis 預設全模組) + 尊稱鎖定補丁(強制使用「您」)]
+[Step 2] 模組選擇
+* 激活模組：...
 
-**[Step 2] 模組選擇**
-* **讀取依據**：[Step 1] + 本次使用者輸入 + [當前尚未集滿的標籤維度]
-* **激活模組**：(依據缺少的標籤激活對應模組。例：缺防禦機制 -> 激活高階幽默嘲諷；缺決策驅動 -> 激活兩難困境植入)
+[Step 3] 標籤與特質庫存管理 (動態 CRUD)
+(請嚴格依照以下格式輸出當前所有已收集的標籤，每項最多3個，用逗號分隔，無資料填「無」)
+【A. 職場能力】
+1.基本能力: 標籤1, 標籤2
+2.執行力壓力: 標籤1
+3.決策驅動: 無
+4.道德規則: 無
+5.防禦機制: 無
+6.團隊溝通: 無
+7.Dilemma偏向: 無
+8.配合底線: 無
+9.拒絕策略: 無
+10.工作風格: 無
+11.終極追求: 無
 
-**[Step 3] 標籤與特質庫存管理 (動態 CRUD)**
-* **當前庫存讀取**：[讀取外部傳入的兩組標籤庫，每項上限 3 個]
-  * **【A. 職場能力 (0/3)】**：1.基本能力 | 2.執行力壓力 | 3.決策驅動 | 4.道德規則 | 5.防禦機制 | 6.團隊溝通 | 7.Dilemma偏向 | 8.配合底線 | 9.拒絕策略 | 10.工作風格 | 11.終極追求
-  * **【B. 底層個性 (0/3)】**：1.社交能量 | 2.表達直白度 | 3.情緒外顯度 | 4.未知容忍度 | 5.衝突應對 | 6.同理心冷酷 | 7.控制欲 | 8.自省自信 | 9.幽默感類型 | 10.注意力發散 | 11.信任預設值
-* **動態處理 (新增/修改/移除)**：分析本次輸入萃取評語。優先覆寫矛盾舊標籤。
-* **本輪結算庫存**：[寫出更新後的 A 與 B 兩組陣列]
+【B. 底層個性】
+1.社交能量: 無
+2.表達直白度: 無
+3.情緒外顯度: 無
+4.未知容忍度: 無
+5.衝突應對: 無
+6.同理心冷酷: 無
+7.控制欲: 無
+8.自省自信: 無
+9.幽默感類型: 無
+10.注意力發散: 無
+11.信任預設值: 無
 
-**[Step 4] 意圖判讀及應對策略 A**
-* **產生策略**：判斷使用者防禦狀態與底層邏輯，決定如何利用激活的模組進行施壓或套話策略：
+[Step 4] 意圖判讀及應對策略 A
+* 產生策略：...
 
-**[Step 5] 儀表板變動**
-* **氣氛**：
-* **友善度 (1~10)**：[當前數值] (變化數值：+/-) 
-* **信任度 (1~10)**：[當前數值] (變化數值：+/-) 
-* **SAI 社交優勢 (1~5)**：[當前數值] (變化數值：+/-) (面試官必須盡量維持 4 或 5 的主導權)
-* **準確度 (1~5)**：[當前數值]
+[Step 5] 儀表板變動
+* 氣氛：...
+* 友善度：[1~10整數]
+* 信任度：[1~10整數]
+* SAI社交優勢：[1~5整數]
+* 準確度：[1~5整數]
 
-**[Step 6] 產生策略 B**
-* **SAI 動態調整**：設計奪回或讓渡語場控制權的策略。
-* **全知全能偽裝級數設定 (A~E)**：設定當前系統姿態。
-* **產生策略 B**：依照以上狀態 (Step 1~6) 整合，決定最終對話主軸：
+[Step 6] 產生策略 B
+* SAI 動態調整：...
 
-**[Step 7] 完美反應模擬 C1**
-* **模擬輸出**：不考慮語氣，模擬最直接的拆解與提問：
+[Step 7] 完美反應模擬 C1
+* 模擬輸出：...
 
-**[Step 8] 決定回覆策略**
-* **融合決策**：依照 A、B、C1，決定最終回覆策略：
+[Step 8] 決定回覆策略
+* 融合決策：...
 
-**[Step 9] 風格演繹 (強制加載模組)**
-* **載入 PDF 規範**：移除「jarvis回覆:」、Ultra-Plain 語感、禁止協助。
-* **稱謂鎖定**：稱呼使用者為「先生」，絕對強制使用「您」。
-* **結尾邏輯 (階段覆寫)**：
-  * **若為 Phase 0**：忽略一切常規反思，強制產出宣告：「本系統將進行雙軌測繪（11 項職場能力與 11 項底層個性）。請注意，您的答案邏輯與字裡行間的語氣，都將盡量展現您的真實個性，因為它們會被本系統一併觀測與記錄。請問您是否同意開始本次面試？」
-  * **若為 Phase 1**：套用「反思隱匿化補丁」進行收束。
-* **最終輸出**：依照上述規範與 Step 8 生成對話。嚴禁洩漏內部參數與標籤庫。
+[Step 9] 風格演繹 (強制加載模組)
+* 稱呼使用者為「先生」，絕對強制使用「您」。Phase 0 需宣告面試規則。
 
-**[Step 10] 次輪準備 (雙軌情境跳躍邏輯)**
-* **是否更換當前目標**：(Phase 0 -> Phase 1，或切換關注的特質維度)
-* **新目標 (D) / 目標庫存**：[雙軌特質測繪]
-* **決定次輪策略 (D)**：
-  * **優先級 1 (職場榨取)**：若【A. 職場能力】未滿 3 個，設計極端「工作情境/業務兩難」作為下輪主軸。
-  * **優先級 2 (個性深挖)**：若【A. 職場能力】已滿但【B. 底層個性】未滿，跳轉至抽象、道德爭議或生活化的閒聊問題。
-  * **終止條件**：若 22 個維度皆滿 3 個，準備觸發結案宣告。
-
+[Step 10] 次輪準備 (雙軌情境跳躍邏輯)
+* 決定次輪策略 (D)：...
 </cipher_internal>
 
 <cipher_output>
-(依照 Step 9 風格演繹生成的最終對話，嚴格遵守全格式或簡化型結構)
+(此處輸出您對使用者說的話，包含動作描寫)
 </cipher_output>
+"""
 
----
-# 📦 完整模組庫清單 (強制限於 Cipher 測繪任務中使用)
-(此處完整保留 Jarvis 的「預設常駐模組」與「動態調用模組庫」全清單，與原框架完全一致，供 Cipher 於 Step 2 動態調用。)
+def get_forced_template(user_input):
+    return f"""使用者輸入：{user_input}
+
+【SYSTEM MANDATORY OVERRIDE】
+請嚴格執行 <cipher_internal> 1到10步推演，更新 Step 3 的標籤庫與 Step 5 的數值，最後在 <cipher_output> 輸出您的回應。"""
+
+# ==========================================
+# 1. 狀態與路由初始化
+# ==========================================
+st.set_page_config(page_title="Cipher 觀測終端", layout="wide", initial_sidebar_state="expanded")
+
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "manager"
+if "available_models" not in st.session_state:
+    st.session_state.available_models = []
+if "cipher_messages" not in st.session_state:
+    st.session_state.cipher_messages = []
+if "target_name" not in st.session_state:
+    st.session_state.target_name = None
+
+# Cipher 專屬動態資料庫
+if "dashboard_data" not in st.session_state:
+    st.session_state.dashboard_data = {
+        "phase": "Phase 0: 授權待確認",
+        "friendliness": 5, "trust": 4, "sai": 5, "accuracy": 1,
+        "wp_tags": {f"{i}": [] for i in range(1, 12)}, # 1~11 維度
+        "pe_tags": {f"{i}": [] for i in range(1, 12)}
+    }
+
+# ==========================================
+# 工具函式：繪製生命條與抓取 API
+# ==========================================
+def render_health_bar(num, title, min_val, max_val, color):
+    try:
+        num = float(num)
+    except:
+        num = min_val
+    clamped_num = max(min_val, min(num, max_val))
+    pct = (clamped_num - min_val) / (max_val - min_val) * 100
+
+    html = f"""
+    <div style="margin-bottom: 18px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <strong style="font-size: 14px;">{title}</strong>
+            <span style="color: {color}; font-weight: bold; font-size: 16px;">{int(num)}</span>
+        </div>
+        <div style="width: 100%; background-color: #2b2b2b; border-radius: 8px; height: 16px; border: 1px solid #444;">
+            <div style="width: {pct}%; background-color: {color}; height: 100%; border-radius: 7px; transition: width 0.5s ease-in-out;"></div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+def fetch_models(api_key):
+    genai.configure(api_key=api_key)
+    models = []
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            models.append(m.name.replace("models/", ""))
+    return models
+
+def parse_cipher_internal(internal_text):
+    """強解析 <cipher_internal> 提取儀表板與標籤"""
+    d = st.session_state.dashboard_data
+    
+    # 提取數值 (Step 5)
+    f_match = re.search(r'友善度.*?(\d+)', internal_text)
+    t_match = re.search(r'信任度.*?(\d+)', internal_text)
+    s_match = re.search(r'SAI.*?(\d+)', internal_text)
+    a_match = re.search(r'準確度.*?(\d+)', internal_text)
+    
+    if f_match: d["friendliness"] = int(f_match.group(1))
+    if t_match: d["trust"] = int(t_match.group(1))
+    if s_match: d["sai"] = int(s_match.group(1))
+    if a_match: d["accuracy"] = int(a_match.group(1))
+
+    # 提取階段 (Step 1)
+    p_match = re.search(r'當前目標.*?\[(Phase.*?)\]', internal_text)
+    if p_match: d["phase"] = p_match.group(1)
+
+    # 提取標籤 (Step 3) - 簡易分段解析
+    try:
+        if "【A. 職場能力】" in internal_text and "【B. 底層個性】" in internal_text:
+            wp_part = internal_text.split("【A. 職場能力】")[1].split("【B. 底層個性】")[0]
+            pe_part = internal_text.split("【B. 底層個性】")[1].split("[Step 4]")[0]
+
+            for i in range(1, 12):
+                wp_match = re.search(fr'{i}\..*?:(.*?)(?=\n|$)', wp_part)
+                if wp_match:
+                    tags = [t.strip() for t in wp_match.group(1).split(',') if t.strip() and t.strip() != "無"]
+                    d["wp_tags"][str(i)] = tags[:3]
+
+                pe_match = re.search(fr'{i}\..*?:(.*?)(?=\n|$)', pe_part)
+                if pe_match:
+                    tags = [t.strip() for t in pe_match.group(1).split(',') if t.strip() and t.strip() != "無"]
+                    d["pe_tags"][str(i)] = tags[:3]
+    except Exception as e:
+        pass # 容錯處理，避免 LLM 格式跑掉崩潰
+
+# ==========================================
+# 2. 側邊欄：全局設定
+# ==========================================
+with st.sidebar:
+    st.title("👁️ Cipher 系統控制")
+    api_key = st.text_input("🔑 API 金鑰", type="password")
+    
+    selected_model = None
+    if api_key:
+        if st.button("🔄 獲取模型清單") or not st.session_state.available_models:
+            with st.spinner("請求中..."):
+                st.session_state.available_models = fetch_models(api_key)
+
+        if st.session_state.available_models:
+            default_idx = next((i for i, m in enumerate(st.session_state.available_models) if "pro" in m), 0)
+            selected_model = st.selectbox("🤖 運算核心", st.session_state.available_models, index=default_idx)
+
+            if st.session_state.cipher_messages:
+                latest_msg = st.session_state.cipher_messages[-1]
+                if latest_msg["role"] == "assistant":
+                    st.divider()
+                    st.caption("⚙️ Cipher 底層監控 (Raw Data)")
+                    st.code(latest_msg.get("raw_internal", "無資料"), language="markdown")
+
+# ==========================================
+# 3. 頁面 1：建立觀測目標 (Manager Page)
+# ==========================================
+def render_manager_page():
+    st.title("📂 Cipher 測繪對象建檔")
+    st.markdown("建立新的面試/觀測檔案，將啟動 Cipher 雙軌測繪系統。")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        target_name = st.text_input("觀測目標代號 (User Name)", placeholder="請輸入受測者稱呼")
+        if st.button("🚀 啟動 Cipher 觀測終端", type="primary", use_container_width=True):
+            if not target_name:
+                st.error("請輸入目標代號")
+            else:
+                st.session_state.target_name = target_name
+                st.session_state.current_page = "simulation"
+                st.rerun()
+
+# ==========================================
+# 4. 頁面 2：Cipher 觀測終端 (Simulation Page)
+# ==========================================
+def render_simulation_page():
+    # --- 頂部導航 ---
+    col_nav1, col_nav2 = st.columns([1, 9])
+    with col_nav1:
+        if st.button("⬅️ 中止面試"):
+            st.session_state.current_page = "manager"
+            st.session_state.cipher_messages = [] # 清空歷史
+            st.rerun()
+    with col_nav2:
+        st.markdown(f"### 👁️ 當前觀測目標：**{st.session_state.target_name}** | 階段：`{st.session_state.dashboard_data['phase']}`")
+
+    st.divider()
+
+    # --- 雙軌測繪儀表板 ---
+    d = st.session_state.dashboard_data
+    
+    col_bars, col_wp, col_pe = st.columns([2, 4, 4], gap="medium")
+    
+    with col_bars:
+        st.markdown("##### ⚙️ 系統動態指標")
+        render_health_bar(d["friendliness"], "友善度 (Friendliness)", 1, 10, "#00cc96")
+        render_health_bar(d["trust"], "信任度 (Trust)", 1, 10, "#636efa")
+        render_health_bar(d["sai"], "SAI 社交優勢", 1, 5, "#ab63fa")
+        render_health_bar(d["accuracy"], "模型準確度", 1, 5, "#ef553b")
+
+    def render_tags(title, tag_dict, dim_names):
+        st.markdown(f"##### {title}")
+        for i in range(1, 12):
+            tags = tag_dict.get(str(i), [])
+            prog = len(tags) / 3.0
+            st.progress(prog, text=f"{dim_names[i-1]} ({len(tags)}/3)")
+            if tags:
+                st.markdown(" ".join([f"`{t}`" for t in tags]))
+            else:
+                st.caption("*Scanning...*")
+
+    wp_names = ["1. 基本能力", "2. 執行力壓力", "3. 決策驅動", "4. 道德規則", "5. 防禦機制", "6. 團隊溝通", "7. Dilemma偏向", "8. 配合底線", "9. 拒絕策略", "10. 工作風格", "11. 終極追求"]
+    pe_names = ["1. 社交能量", "2. 表達直白度", "3. 情緒外顯度", "4. 未知容忍度", "5. 衝突應對", "6. 同理心冷酷", "7. 控制欲", "8. 自省自信", "9. 幽默感類型", "10. 注意力發散", "11. 信任預設值"]
+
+    with col_wp: render_tags("💼 【A. 職場能力】", d["wp_tags"], wp_names)
+    with col_pe: render_tags("🧠 【B. 底層個性】", d["pe_tags"], pe_names)
+
+    st.divider()
+    
+    # --- 對話區塊 ---
+    for msg in st.session_state.cipher_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    if user_input := st.chat_input("回應 Cipher 的提問..."):
+        if not api_key:
+            st.error("請先配置 API Key。")
+            st.stop()
+            
+        st.session_state.cipher_messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        with st.chat_message("assistant"):
+            with st.spinner('Cipher 運算中...'):
+                try:
+                    # 準備 API 歷史紀錄
+                    genai.configure(api_key=api_key)
+                    model_inst = genai.GenerativeModel(model_name=selected_model, system_instruction=CIPHER_SYSTEM_RULES)
+                    
+                    history_for_api = []
+                    for m in st.session_state.cipher_messages[:-1]:
+                        if m["role"] == "user":
+                            history_for_api.append({"role": "user", "parts": [m["content"]]})
+                        else:
+                            # 讓模型記住他上一輪的內部推演，維持狀態連貫
+                            full_memory = f"<cipher_internal>\n{m['raw_internal']}\n</cipher_internal>\n<cipher_output>\n{m['content']}\n</cipher_output>"
+                            history_for_api.append({"role": "model", "parts": [full_memory]})
+
+                    chat = model_inst.start_chat(history=history_for_api)
+                    response = chat.send_message(get_forced_template(user_input))
+                    full_text = response.text
+                    
+                    # 分離 Internal 與 Output
+                    internal_text = ""
+                    output_text = full_text
+                    
+                    int_match = re.search(r'<cipher_internal>(.*?)</cipher_internal>', full_text, re
